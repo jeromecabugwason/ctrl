@@ -42,7 +42,7 @@ void testScanDevices() async {
   // await FlutterBluetoothSerial.instance.getBondStateForAddress(address);
 
   // bool? isPaired = await FlutterBluetoothSerial.instance
-  //     .bondDeviceAtAddress(deviceAddress, pin: '0000');
+  //     .bondDeviceAtAddress(deviceAddress, pin: '1234');
 
   // print('bt is paired: $isPaired');
 

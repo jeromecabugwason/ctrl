@@ -1,6 +1,10 @@
 // ignore_for_file: library_private_types_in_public_api
 
+import 'dart:async';
+import 'package:ctrl/bluetooth/bluetooth_api.dart';
+import 'package:ctrl/bluetooth/bluetooth_controller.dart';
 import 'package:flutter/material.dart';
+import '../widgets/stream_text.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({Key? key}) : super(key: key);
@@ -10,111 +14,142 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
-  bool isConnected = false;
+  final BluetoothController btApi = BluetoothApi().getController;
+
+  final StreamController<String> _streamController = StreamController<String>();
+  final TextEditingController _textEditingController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  bool _isConnected = false;
+
+  void _displayText(String text) {
+    _streamController.add(text);
+  }
+
+  void _handleTextFieldSubmit(String str) {
+    _displayText(str);
+    _textEditingController.clear();
+    _focusNode.requestFocus();
+
+    String res = btApi.send(str);
+    _displayText(res);
+  }
+
+  bool _checkConnection() {
+    return btApi.checkConnection();
+  }
+
+  Future<void> _handleConnection() async {
+    String res = await btApi.connect();
+
+    _displayText(res);
+
+    setState(() {
+      _isConnected = _checkConnection();
+    });
+  }
+
+  @override
+  void dispose() {
+    _textEditingController.dispose();
+    _streamController.close();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
-    isConnected = checkConnection();
-  }
-
-  bool checkConnection() {
-    // Implement your logic to check the connection status here
-    return false; // Return true if the device is connected, false otherwise
+    _isConnected = _checkConnection();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        body: SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: kToolbarHeight, // Use the same height as AppBar
-            color:
-                Theme.of(context).primaryColor, // Use the same color as AppBar
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 15),
-                  child: IconButton(
-                    icon: Icon(
-                      isConnected
-                          ? Icons.bluetooth_connected // Use connected icon
-                          : Icons.bluetooth_disabled, // Use disconnected icon
-                      color: isConnected
-                          ? Colors.green
-                          : null, // Set green color for connected icon
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: kToolbarHeight, // Use the same height as AppBar
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(left: 15),
+                    child: Text(
+                      'HC-05 Terminal',
+                      style: TextStyle(
+                        fontSize: 20.0,
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    onPressed: () {
-                      // Bluetooth icon logic...
-                    },
                   ),
-                )
-              ],
-            ),
-          ),
-          const Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                child: Text(
-                  // Your scrolling text here...
-                  'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed euismod tortor vitae mauris lobortis consectetur. Pellentesque sed dui sit amet nibh fringilla lacinia vel quis velit. Nam convallis, ipsum vitae laoreet tempor, nulla mi suscipit eros, a ullamcorper nisl turpis at odio. Etiam id augue quis leo gravida bibendum eu vitae lacus. Integer feugiat dolor nec nibh maximus, sed auctor nisl aliquam. Nulla pharetra lorem eu velit malesuada, id tincidunt orci auctor. Integer viverra, ipsum vel varius bibendum, sapien dolor pulvinar nulla, at sollicitudin sapien dolor sed turpis. Donec eget metus orci. Proin rutrum vel lacus euismod tristique. Mauris lacinia justo sit amet magna vulputate imperdiet. Duis in tortor non sapien vehicula tincidunt.',
-                ),
+                  Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 5),
+                        child: Text(
+                          _isConnected ? 'Connected' : 'Disconnected',
+                          style: TextStyle(
+                            color: _isConnected ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 15),
+                        child: IconButton(
+                          icon: Icon(
+                            _isConnected
+                                ? Icons
+                                    .bluetooth_connected // Use connected icon
+                                : Icons
+                                    .bluetooth_disabled, // Use disconnected icon
+                            color: _isConnected ? Colors.green : null,
+                          ),
+                          onPressed: _handleConnection,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Type your message here',
-                    suffixIcon: IconButton(
-                      onPressed: () {
-                        // Send message logic...
-                      },
-                      icon: const Icon(Icons.send,
-                          color: Colors
-                              .green), // Set green color for the send icon
+            Expanded(
+              child: StreamText(
+                textStream: _streamController.stream,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _textEditingController,
+                    onSubmitted: _handleTextFieldSubmit,
+                    focusNode: _focusNode,
+                    decoration: InputDecoration(
+                      hintText: 'Type your command here',
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          _handleTextFieldSubmit(_textEditingController.text);
+                        },
+                        icon: const Icon(
+                          Icons.send,
+                          color: Colors.green,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16.0),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        // Start Listening button logic...
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors
-                            .orange, // Set orange color for Start Listening button
-                      ),
-                      child: const Text('Start Listening'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Disconnect button logic...
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Colors.red, // Set red color for Disconnect button
-                      ),
-                      child: const Text('Disconnect'),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ));
+    );
   }
 }
