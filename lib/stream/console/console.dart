@@ -22,6 +22,14 @@ class Console {
     _log("LOG", message);
   }
 
+  static void clear() {
+    _logStreamController.add('');
+  }
+
+  static void close() {
+    _logStreamController.close();
+  }
+
   static void _log(String level, String message) {
     final DateTime now = DateTime.now();
     final String timestamp =

@@ -15,28 +15,33 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
-  final BluetoothController btApi = BluetoothApi().getController;
-
-  final StreamController<String> _streamController = StreamController<String>();
+  final BluetoothController bluetoothController = BluetoothApi().getController;
   final TextEditingController _textEditingController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+
+  late final Stream<String> _logStream;
 
   bool _isConnected = false;
 
   void _handleTextFieldSubmit(String str) {
-    _textEditingController.clear();
-    _focusNode.requestFocus();
-
-    btApi.send(str);
+    setState(() {
+      _textEditingController.clear();
+      bluetoothController.send(str);
+    });
   }
 
   bool _checkConnection() {
-    return btApi.checkConnection();
+    return bluetoothController.checkConnection();
+  }
+
+  void _handleClearConsole() {
+    setState(() {
+      Console.clear();
+    });
   }
 
   Future<void> _handleConnection() async {
-    bool res = await btApi.connect();
-
+    bool res = await bluetoothController.connect();
     setState(() {
       _isConnected = res;
     });
@@ -46,15 +51,15 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
 
-    _streamController.addStream(Console.logStream);
-
     _isConnected = _checkConnection();
+
+    _logStream = Console.logStream;
   }
 
   @override
   void dispose() {
     _textEditingController.dispose();
-    _streamController.close(); // Cancel the subscription
+    Console.close();
     super.dispose();
   }
 
@@ -82,31 +87,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     ),
                   ),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 5),
-                        child: Text(
-                          _isConnected ? 'Connected' : 'Disconnected',
-                          style: TextStyle(
-                            color: _isConnected ? Colors.green : Colors.red,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
+                      Text(
+                        _isConnected ? 'Connected' : 'Disconnected',
+                        style: TextStyle(
+                          color: _isConnected ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 15),
-                        child: IconButton(
-                          icon: Icon(
-                            _isConnected
-                                ? Icons
-                                    .bluetooth_connected // Use connected icon
-                                : Icons
-                                    .bluetooth_disabled, // Use disconnected icon
-                            color: _isConnected ? Colors.green : null,
-                          ),
-                          onPressed: _handleConnection,
+                      IconButton(
+                        icon: Icon(
+                          _isConnected
+                              ? Icons.bluetooth_connected // Use connected icon
+                              : Icons
+                                  .bluetooth_disabled, // Use disconnected icon
+                          color: _isConnected ? Colors.blue : Colors.grey,
                         ),
+                        onPressed: _handleConnection,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: _handleClearConsole,
                       ),
                     ],
                   ),
@@ -115,7 +118,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
             Expanded(
               child: StreamText(
-                textStream: _streamController.stream,
+                textStream: _logStream,
               ),
             ),
             Container(
@@ -125,7 +128,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 children: [
                   TextField(
                     controller: _textEditingController,
-                    onSubmitted: _handleTextFieldSubmit,
+                    onSubmitted: (str) {
+                      _handleTextFieldSubmit(str);
+                      _focusNode.requestFocus();
+                    },
                     focusNode: _focusNode,
                     decoration: InputDecoration(
                       hintText: 'Type your command here',
@@ -135,7 +141,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                         },
                         icon: const Icon(
                           Icons.send,
-                          color: Colors.green,
+                          color: Colors.deepPurpleAccent,
                         ),
                       ),
                     ),

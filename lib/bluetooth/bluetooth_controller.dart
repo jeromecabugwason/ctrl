@@ -14,45 +14,9 @@ class BluetoothController {
 
     final bool isBluetoothFunctional = await checkBluetooth();
 
-    if (!isBluetoothFunctional) {
-      Console.log('Bluetooth has some issues, cannot proceed connecting');
-      connectionState = false;
-    }
+    void handleConnection() {
+      Console.info('connecting...');
 
-    // for paired devices
-    List<Device> devices = await _service.scanInPairedDevices();
-
-    for (Device device in devices) {
-      if (device.getName == 'HC-05') {
-        Console.log('Found HC-05 module in paired devices');
-        _service.setDeviceAddress(device.getAddress);
-      }
-    }
-
-    // public scan
-    // Check if the device is an HC-05 module
-    StreamSubscription<Device> streamSub = _service.scan().listen((e) async {
-      if (e.getName == 'HC-05') {
-        _service.setDeviceAddress(e.getAddress);
-
-        Console.log('Found HC-05 module in public, pairing..');
-        _service.pair('1234');
-
-        await _service.cancelDiscovery();
-      } else {
-        throw Exception(
-            'No HC-05 devices detected, make sure the device is powered on.');
-      }
-    });
-
-    streamSub.onData((data) => Console.log(data.toString()));
-
-    streamSub.onError((e) {
-      Console.error(e);
-      connectionState = false;
-    });
-
-    streamSub.onDone(() {
       _service.connect().then((value) {
         Console.log('Connected to HC-05 module');
         connectionState = true;
@@ -60,8 +24,70 @@ class BluetoothController {
         connectionState = false;
         Console.error(error.toString());
       });
-    });
+    }
 
+    void handlePublicScan() {
+      // public scan
+      // Check if the device is an HC-05 module
+      Console.log('Scanning public devices...');
+
+      _service.scan().timeout(const Duration(seconds: 10)).listen(
+        (device) {
+          Console.log(device.toString());
+
+          if (device.getName == 'HC-05') {
+            Console.info('Found HC-05 module in public');
+            _service.setDeviceAddress(device.getAddress);
+            _service.cancelDiscovery();
+            _service.pair('1234');
+          }
+        },
+        onDone: () {
+          Console.log('Done Scanning...');
+          handleConnection();
+        },
+        onError: (e) {
+          if (e is TimeoutException) {
+            Console.info('Scanning timed out. No devices found.');
+          } else {
+            Console.error(e);
+            connectionState = false;
+          }
+        },
+        cancelOnError: true,
+      );
+    }
+
+    Future<void> handlePairedConnection() async {
+      Console.log('Scanning paired devices...');
+
+      final devices = await _service.scanInPairedDevices();
+      Device? hc05;
+
+      for (final device in devices) {
+        if (device.getName == 'HC-05') {
+          Console.log('Found HC-05 module in paired devices');
+          hc05 = device;
+          break;
+        }
+      }
+
+      if (hc05 != null) {
+        _service.setDeviceAddress(hc05.getAddress);
+        handleConnection();
+      } else {
+        Console.log(
+            'Not found in paired devices, proceeding to public scan...');
+        handlePublicScan();
+      }
+    }
+
+    if (!isBluetoothFunctional) {
+      Console.log('Bluetooth has some issues, cannot proceed connecting');
+    }
+
+    Console.log('Connecting to HC-05 module...');
+    await handlePairedConnection();
     return connectionState;
   }
 
@@ -78,6 +104,8 @@ class BluetoothController {
   }
 
   bool send(String msg) {
+    Console.log(msg);
+
     bool isSuccess = _service.send(msg);
 
     if (isSuccess) {

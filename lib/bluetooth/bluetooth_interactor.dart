@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:ctrl/device/device.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
 class BluetoothInteractor {
@@ -39,7 +38,7 @@ class BluetoothInteractor {
       _conn = await BluetoothConnection.toAddress(_deviceAddress);
     } catch (e) {
       throw Exception(
-          'Something went wrong when connecting to this address: $_deviceAddress');
+          'Error when connecting to this address: $_deviceAddress, make sure the device is powered on.');
     }
   }
 
@@ -78,10 +77,8 @@ class BluetoothInteractor {
   Future<bool> isAvailable() async {
     try {
       await _service.isAvailable;
-      debugPrint('isAvailable: true');
       return true;
     } catch (error) {
-      debugPrint('isAvailable: false');
       return false;
     }
   }
@@ -89,10 +86,8 @@ class BluetoothInteractor {
   Future<bool> isEnabled() async {
     try {
       await _service.isEnabled;
-      debugPrint('isEnabled: true');
       return true;
     } catch (error) {
-      debugPrint('isEnabled: false');
       return false;
     }
   }
