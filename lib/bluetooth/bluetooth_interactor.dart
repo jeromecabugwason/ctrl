@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:ctrl/bluetooth/bluetooth_test.dart';
+import 'package:ctrl/device/device.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
@@ -13,40 +13,34 @@ class BluetoothInteractor {
 
   BluetoothInteractor(this._service);
 
-  bool scanInPairedDevices() {
-    bool isFound = false;
-
-    _service.getBondedDevices().then((devices) {
-      for (BluetoothDevice device in devices) {
-        if (device.name == 'HC-05') {
-          isFound = true;
-          _deviceAddress = device.address;
-        }
-      }
-    });
-
-    return isFound;
+  void setDeviceAddress(String address) {
+    _deviceAddress = address;
   }
 
-  bool scan() {
-    bool isFound = false;
+  Future<void> cancelDiscovery() {
+    return _service.cancelDiscovery();
+  }
 
-    _service.startDiscovery().listen((e) {
-      // Check if the device is an HC-05 module
-      if (e.device.name == 'HC-05') {
-        isFound = true;
-        _deviceAddress = e.device.address;
-        _service.cancelDiscovery();
-      }
-    });
+  Future<List<Device>> scanInPairedDevices() async {
+    List<BluetoothDevice> devices = await _service.getBondedDevices();
 
-    return isFound;
+    return devices
+        .map((e) => Device(e.name.toString(), e.address.toString()))
+        .toList();
+  }
+
+  Stream<Device> scan() {
+    return _service.startDiscovery().map(
+        (e) => Device(e.device.name.toString(), e.device.address.toString()));
   }
 
   Future<void> connect() async {
-    _conn = await BluetoothConnection.toAddress(_deviceAddress);
-
-    debugPrint('Bluetooth is connected: ${_conn.isConnected}');
+    try {
+      _conn = await BluetoothConnection.toAddress(_deviceAddress);
+    } catch (e) {
+      throw Exception(
+          'Something went wrong when connecting to this address: $_deviceAddress');
+    }
   }
 
   Future<BluetoothBondState> getBondSate() {
@@ -69,12 +63,12 @@ class BluetoothInteractor {
   }
 
   Stream<String> startListening() {
-    return conn.input!.map(ascii.decode);
+    return _conn.input!.map(ascii.decode);
   }
 
   bool send(String msg) {
     try {
-      conn.output.add(Uint8List.fromList(ascii.encode(msg)));
+      _conn.output.add(Uint8List.fromList(ascii.encode(msg)));
       return true;
     } catch (e) {
       return false;

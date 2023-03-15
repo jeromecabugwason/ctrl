@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:ctrl/bluetooth/bluetooth_api.dart';
 import 'package:ctrl/bluetooth/bluetooth_controller.dart';
+import 'package:ctrl/stream/console/console.dart';
 import 'package:flutter/material.dart';
 import '../widgets/stream_text.dart';
 
@@ -22,17 +23,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   bool _isConnected = false;
 
-  void _displayText(String text) {
-    _streamController.add(text);
-  }
-
   void _handleTextFieldSubmit(String str) {
-    _displayText(str);
     _textEditingController.clear();
     _focusNode.requestFocus();
 
-    String res = btApi.send(str);
-    _displayText(res);
+    btApi.send(str);
   }
 
   bool _checkConnection() {
@@ -40,26 +35,27 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Future<void> _handleConnection() async {
-    String res = await btApi.connect();
-
-    _displayText(res);
+    bool res = await btApi.connect();
 
     setState(() {
-      _isConnected = _checkConnection();
+      _isConnected = res;
     });
-  }
-
-  @override
-  void dispose() {
-    _textEditingController.dispose();
-    _streamController.close();
-    super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+
+    _streamController.addStream(Console.logStream);
+
     _isConnected = _checkConnection();
+  }
+
+  @override
+  void dispose() {
+    _textEditingController.dispose();
+    _streamController.close(); // Cancel the subscription
+    super.dispose();
   }
 
   @override
