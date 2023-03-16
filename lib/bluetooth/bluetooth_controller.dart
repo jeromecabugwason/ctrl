@@ -2,157 +2,182 @@ import 'dart:async';
 
 import 'package:ctrl/bluetooth/bluetooth_interactor.dart';
 import 'package:ctrl/device/device.dart';
+import 'package:ctrl/state/bool_state.dart';
 import 'package:ctrl/stream/console/console.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BluetoothController {
   final BluetoothInteractor _service;
+  BoolState scanState = BoolState();
 
   BluetoothController(this._service);
 
-  Future<bool> connect() async {
-    bool connectionState = false;
-
-    final bool isBluetoothFunctional = await checkBluetooth();
-
-    void handleConnection() {
-      Console.info('connecting...');
-
-      _service.connect().then((value) {
-        Console.log('Connected to HC-05 module');
-        connectionState = true;
-      }).onError((error, stackTrace) {
-        connectionState = false;
-        Console.error(error.toString());
-      });
-    }
-
-    void handlePublicScan() {
-      // public scan
-      // Check if the device is an HC-05 module
-      Console.log('Scanning public devices...');
-
-      _service.scan().timeout(const Duration(seconds: 10)).listen(
-        (device) {
-          Console.log(device.toString());
-
-          if (device.getName == 'HC-05') {
-            Console.info('Found HC-05 module in public');
-            _service.setDeviceAddress(device.getAddress);
-            _service.cancelDiscovery();
-            _service.pair('1234');
-          }
-        },
-        onDone: () {
-          Console.log('Done Scanning...');
-          handleConnection();
-        },
-        onError: (e) {
-          if (e is TimeoutException) {
-            Console.info('Scanning timed out. No devices found.');
-          } else {
-            Console.error(e);
-            connectionState = false;
-          }
-        },
-        cancelOnError: true,
-      );
-    }
-
-    Future<void> handlePairedConnection() async {
-      Console.log('Scanning paired devices...');
-
-      final devices = await _service.scanInPairedDevices();
-      Device? hc05;
-
-      for (final device in devices) {
-        if (device.getName == 'HC-05') {
-          Console.log('Found HC-05 module in paired devices');
-          hc05 = device;
-          break;
-        }
-      }
-
-      if (hc05 != null) {
-        _service.setDeviceAddress(hc05.getAddress);
-        handleConnection();
-      } else {
-        Console.log(
-            'Not found in paired devices, proceeding to public scan...');
-        handlePublicScan();
-      }
-    }
-
-    if (!isBluetoothFunctional) {
-      Console.log('Bluetooth has some issues, cannot proceed connecting');
-    }
-
-    Console.log('Connecting to HC-05 module...');
-    await handlePairedConnection();
-    return connectionState;
+  void _handlePairing(Device device) {
+    _service.setDeviceAddress(device.getAddress);
+    _service.pair('1234');
   }
 
-  Future<bool> startListening() async {
-    Stream<String> stream = _service.startListening();
-    Console.log('Started listening for incoming messages');
+  Future<bool> _handleConnection(Device device) async {
+    Console.info('connecting...');
 
-    await for (var message in stream) {
-      Console.log('Received data: $message');
+    _service.setDeviceAddress(device.getAddress);
+
+    try {
+      await _service.connect();
+      Console.log('Connected to HC-05 module');
       return true;
+    } catch (error) {
+      Console.error(error.toString());
+      return false;
     }
-
-    return false;
   }
 
-  bool send(String msg) {
-    Console.log(msg);
-
-    bool isSuccess = _service.send(msg);
-
-    if (isSuccess) {
-      Console.log('Message Sent!');
-    } else {
-      Console.log('Message not sent, try again later.');
-    }
-
-    return isSuccess;
+  Device _getDeviceFromList(List<Device> devices) {
+    return devices.firstWhere((device) => device.getName == 'HC-05');
   }
 
-  bool disconnect() {
-    bool isSuccess = _service.disconnect();
+  Device _getDeviceFromStream() {
+    late Device device;
 
-    if (isSuccess) {
+    _service
+        .scan()
+        .timeout(
+          const Duration(seconds: 10),
+        )
+        .listen(
+      (publicDevice) {
+        Console.log(publicDevice.toString());
+
+        if (publicDevice.getName == 'HC-05') {
+          device = publicDevice;
+          _service.cancelDiscovery();
+        }
+      },
+      onError: (e) => Console.error(e.toString()),
+    );
+
+    return device;
+  }
+
+  Future<void> _handlePairedConnection() async {
+    Console.log('Scanning paired devices...');
+
+    final List<Device> devices = await _service.scanInPairedDevices();
+
+    try {
+      Device device = _getDeviceFromList(devices);
+      Console.log('Found in paired devices.');
+      await _handleConnection(device);
+    } catch (e) {
+      Console.error('Not found in paired devices.');
+      rethrow;
+    }
+  }
+
+  Future<void> _handlePublicScan() async {
+    Console.log('Scanning public devices...');
+
+    try {
+      //  get device stream
+      Device device = _getDeviceFromStream();
+
+      Console.info('Found device in public');
+
+      _handlePairing(device);
+    } catch (error) {
+      Console.error('Failed paired connection ${error.toString()}');
+    }
+  }
+
+  Future<void> connect() async {
+    if (scanState.isEnabled) return Console.log('Already scanning');
+
+    bool isBluetoothEnabled = await checkBluetooth();
+
+    if (scanState.isDisabled && isBluetoothEnabled) {
+      Console.log('Running bluetooth search job...');
+      scanState.enable();
+
+      try {
+        await _handlePairedConnection();
+      } catch (e) {
+        await _handlePublicScan();
+      } finally {
+        scanState.disable();
+      }
+    }
+  }
+
+  void startListening() async {
+    Console.log('Started listening for incoming data stream');
+
+    _service.startListening().listen((data) {
+      Console.log('Received data: $data');
+    });
+  }
+
+  void send(String msg) {
+    try {
+      _service.send(msg);
+      Console.log(msg);
+    } catch (e) {
+      Console.error(e.toString());
+    }
+  }
+
+  void disconnect() {
+    try {
+      _service.disconnect();
       Console.log('Disconnected!');
-    } else {
-      Console.log('Not Disconnected, try again later.');
+    } catch (e) {
+      Console.error(e.toString());
     }
-
-    return isSuccess;
   }
 
   bool checkConnection() {
-    bool isConnected = _service.isConnected();
+    try {
+      bool status = _service.isConnected();
+      Console.log(
+          'Bluetooth device connection: ${status ? 'connected' : 'disconnected'}');
 
-    if (isConnected) {
-      Console.log('Bluetooth device is connected.');
-    } else {
-      Console.log('Bluetooth device is not connected.');
+      return status;
+    } catch (e) {
+      Console.error(e.toString());
+      return false;
     }
-
-    return isConnected;
   }
 
   Future<bool> checkBluetooth() async {
     final isAvailable = await _service.isAvailable();
     final isEnabled = await _service.isEnabled();
+    final canEnable = isEnabled && isAvailable;
 
     Console.log('bluetooth is available: $isAvailable');
     Console.log('bluetooth is enabled: $isEnabled');
 
-    if (isEnabled && isAvailable) {
+    try {
+      if (!canEnable) await enableBluetooth();
       return true;
-    } else {
-      // request permissions
-      return _service.requestEnable();
+    } catch (e) {
+      Console.error(e.toString());
+      return false;
     }
+  }
+
+  Future<Map<Permission, PermissionStatus>> checkPermissions() async {
+    return await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothAdvertise,
+      Permission.bluetoothConnect,
+    ].request();
+  }
+
+  Future<void> enableBluetooth() async {
+    await checkPermissions();
+    bool isPermitted = await Permission.bluetooth.isGranted;
+
+    if (isPermitted) return await _service.requestEnable();
+    return Future.error('is granted?: $isPermitted');
   }
 }

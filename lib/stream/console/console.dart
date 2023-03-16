@@ -31,10 +31,7 @@ class Console {
   }
 
   static void _log(String level, String message) {
-    final DateTime now = DateTime.now();
-    final String timestamp =
-        "${now.hour}:${now.minute}:${now.second}.${now.millisecond.toString().padLeft(3, '0')}";
-    final String logMessage = "$timestamp [$level]: $message";
+    final String logMessage = "[$level]: $message";
     _logStreamController.add(logMessage);
   }
 }

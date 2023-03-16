@@ -41,9 +41,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Future<void> _handleConnection() async {
-    bool res = await bluetoothController.connect();
+    await bluetoothController.connect();
+
     setState(() {
-      _isConnected = res;
+      _isConnected = bluetoothController.checkConnection();
     });
   }
 

@@ -8,29 +8,27 @@ class BluetoothInteractor {
   // conn - abbreviation of connection
   final FlutterBluetoothSerial _service;
   late String _deviceAddress;
+  //  TODO: invert the dependency
   late BluetoothConnection _conn;
 
   BluetoothInteractor(this._service);
-
-  void setDeviceAddress(String address) {
-    _deviceAddress = address;
-  }
-
-  Future<void> cancelDiscovery() {
-    return _service.cancelDiscovery();
-  }
 
   Future<List<Device>> scanInPairedDevices() async {
     List<BluetoothDevice> devices = await _service.getBondedDevices();
 
     return devices
-        .map((e) => Device(e.name.toString(), e.address.toString()))
+        .map((e) => Device(
+              e.name.toString(),
+              e.address.toString(),
+            ))
         .toList();
   }
 
   Stream<Device> scan() {
-    return _service.startDiscovery().map(
-        (e) => Device(e.device.name.toString(), e.device.address.toString()));
+    return _service.startDiscovery().map((e) => Device(
+          e.device.name.toString(),
+          e.device.address.toString(),
+        ));
   }
 
   Future<void> connect() async {
@@ -50,62 +48,43 @@ class BluetoothInteractor {
     return _service.bondDeviceAtAddress(_deviceAddress, pin: pin);
   }
 
-  bool disconnect() {
-    bool isSuccess = false;
-
-    _conn
-        .close()
-        .then((value) => isSuccess = true)
-        .onError((error, stackTrace) => isSuccess = false);
-
-    return isSuccess;
+  Future<void> disconnect() async {
+    try {
+      await _conn.close();
+    } catch (error) {
+      throw Exception('Failed to disconnect: ${error.toString()}');
+    }
   }
 
-  Stream<String> startListening() {
-    return _conn.input!.map(ascii.decode);
-  }
+  void send(String msg) {
+    if (msg.isEmpty) throw Exception('Message is empty.');
 
-  bool send(String msg) {
     try {
       _conn.output.add(Uint8List.fromList(ascii.encode(msg)));
-      return true;
     } catch (e) {
-      return false;
+      throw Exception('Failed to send message.');
     }
   }
 
-  Future<bool> isAvailable() async {
+  Future<void> requestEnable() async {
     try {
-      await _service.isAvailable;
-      return true;
-    } catch (error) {
-      return false;
+      await _service.requestEnable();
+    } catch (e) {
+      throw Exception('Failed to enable Bluetooth: ${e.toString()}');
     }
   }
 
-  Future<bool> isEnabled() async {
-    try {
-      await _service.isEnabled;
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+  void setDeviceAddress(String address) => _deviceAddress = address;
 
-  Future<BluetoothState?> state() async {
-    return await _service.state;
-  }
+  Future<void> cancelDiscovery() => _service.cancelDiscovery();
 
-  bool requestEnable() {
-    bool status = false;
+  Future<bool> isAvailable() async => await _service.isAvailable ?? false;
 
-    _service
-        .requestEnable()
-        .then((value) => status = true)
-        .onError((error, stackTrace) => status = false);
+  Future<bool> isEnabled() async => await _service.isEnabled ?? false;
 
-    return status;
-  }
+  Future<BluetoothState?> state() async => await _service.state;
+
+  Stream<String> startListening() => _conn.input!.map(ascii.decode);
 
   bool isConnected() {
     try {
